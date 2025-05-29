@@ -13,14 +13,35 @@ const BRAILLE_TO_ENGLISH = {
     '⠰': '/', '⠣': '-', '⠻': '='
 };
 
+// Mock function to simulate Braille detection from an image
+// In a real app, this would be done by a backend service or ML model
+const detectBrailleFromImage = (imageData) => {
+    // This is just a mock - returns random Braille characters for demonstration
+    // In reality, you would send the image to a backend for processing
+    console.log("Image data received for processing:", imageData.substring(0, 30) + "...");
+    
+    // Simulate processing delay
+    return new Promise(resolve => {
+        setTimeout(() => {
+            // Return some sample Braille text
+            const sampleBraille = "⠓⠑⠇⠇⠕ ⠺⠕⠗⠇⠙";
+            resolve(sampleBraille);
+        }, 1500);
+    });
+};
+
 function App() {
+    const [brailleText, setBrailleText] = useState('');
     const [convertedText, setConvertedText] = useState('');
     const [isScanning, setIsScanning] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
     const [cameraError, setCameraError] = useState(null);
     const [imageData, setImageData] = useState(null);
+    const [scanInstructions, setScanInstructions] = useState('Position Braille text in the camera view');
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const streamRef = useRef(null);
+    const detectionTimeoutRef = useRef(null);
 
     // Convert Braille text to English
     const convertBrailleToEnglish = (brailleText) => {
@@ -36,9 +57,19 @@ function App() {
         try {
             setCameraError(null);
             setIsScanning(true);
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            setScanInstructions('Position Braille text in the camera view');
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: 'environment',
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            });
             streamRef.current = stream;
             videoRef.current.srcObject = stream;
+            
+            // Start periodic checking for Braille (simulated)
+            startBrailleDetection();
         } catch (err) {
             console.error("Camera error:", err);
             setCameraError('Could not access camera. Please ensure you have granted camera permissions.');
@@ -46,8 +77,57 @@ function App() {
         }
     };
 
+    // Simulate Braille detection by periodically checking
+    const startBrailleDetection = () => {
+        detectionTimeoutRef.current = setInterval(() => {
+            if (isScanning && videoRef.current && videoRef.current.readyState === 4) {
+                attemptBrailleDetection();
+            }
+        }, 2000); // Check every 2 seconds
+    };
+
+    // Attempt to detect Braille (simulated)
+    const attemptBrailleDetection = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas) return;
+
+        // For demo purposes, we'll just capture the image
+        // In a real app, you would analyze the image for Braille dots
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Get image data
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        // Simulate processing
+        setIsProcessing(true);
+        setScanInstructions('Detecting Braille...');
+        
+        detectBrailleFromImage(imageDataUrl).then(detectedBraille => {
+            setBrailleText(detectedBraille);
+            setConvertedText(convertBrailleToEnglish(detectedBraille));
+            setImageData(imageDataUrl);
+            setIsProcessing(false);
+            setScanInstructions('Braille detected!');
+            
+            // Stop scanning after successful detection
+            setTimeout(() => {
+                stopCamera();
+                setScanInstructions('Scan complete');
+            }, 1000);
+        });
+    };
+
     // Stop camera
     const stopCamera = () => {
+        if (detectionTimeoutRef.current) {
+            clearInterval(detectionTimeoutRef.current);
+            detectionTimeoutRef.current = null;
+        }
+        
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => track.stop());
             streamRef.current = null;
@@ -55,22 +135,11 @@ function App() {
         setIsScanning(false);
     };
 
-    // Capture image from camera
-    const captureImage = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas) return;
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const imageDataUrl = canvas.toDataURL('image/png');
-        setImageData(imageDataUrl);
-        
-        // In a real app, you would send this image to a backend for processing
-        // For this demo, we'll simulate processing with a textarea input
+    // Manual Braille input
+    const handleManualInput = (e) => {
+        const input = e.target.value;
+        setBrailleText(input);
+        setConvertedText(convertBrailleToEnglish(input));
     };
 
     // Clean up camera on unmount
@@ -78,6 +147,9 @@ function App() {
         return () => {
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
+            }
+            if (detectionTimeoutRef.current) {
+                clearInterval(detectionTimeoutRef.current);
             }
         };
     }, []);
@@ -94,7 +166,7 @@ function App() {
                             onClick={startCamera}
                             className="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                         >
-                            Start Camera
+                            Scan Braille Text
                         </button>
                     ) : (
                         <>
@@ -106,19 +178,17 @@ function App() {
                                     className="w-full border rounded"
                                 />
                                 <canvas ref={canvasRef} className="hidden" />
+                                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-center p-2">
+                                    {scanInstructions}
+                                </div>
                             </div>
                             <div className="flex space-x-2">
                                 <button
-                                    onClick={captureImage}
-                                    className="flex-1 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
-                                >
-                                    Capture
-                                </button>
-                                <button
                                     onClick={stopCamera}
-                                    className="flex-1 bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+                                    className="w-full bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+                                    disabled={isProcessing}
                                 >
-                                    Stop Camera
+                                    {isProcessing ? 'Processing...' : 'Cancel Scan'}
                                 </button>
                             </div>
                         </>
@@ -128,47 +198,67 @@ function App() {
                     )}
                 </div>
 
-                {/* Image Preview */}
-                {imageData && (
-                    <div className="mb-4">
-                        <h2 className="text-lg font-semibold mb-2">Captured Image</h2>
-                        <img 
-                            src={imageData} 
-                            alt="Captured Braille" 
-                            className="w-full border rounded"
-                        />
-                        <p className="mt-2 text-sm text-gray-600">
-                            Note: This demo shows the camera functionality. In a real app, this image would be sent to a backend service for Braille recognition.
-                        </p>
+                {/* Results Section */}
+                {convertedText && (
+                    <div className="mb-6">
+                        <h2 className="text-lg font-semibold mb-2">Scan Results</h2>
+                        
+                        {imageData && (
+                            <div className="mb-4">
+                                <h3 className="font-medium mb-1">Captured Image</h3>
+                                <img 
+                                    src={imageData} 
+                                    alt="Captured Braille" 
+                                    className="w-full border rounded"
+                                />
+                            </div>
+                        )}
+                        
+                        <div className="mb-4">
+                            <h3 className="font-medium mb-1">Detected Braille</h3>
+                            <div className="p-3 bg-gray-100 rounded border text-xl">
+                                {brailleText}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 className="font-medium mb-1">Converted Text</h3>
+                            <div className="p-3 bg-gray-100 rounded border font-mono">
+                                {convertedText}
+                            </div>
+                        </div>
                     </div>
                 )}
 
                 {/* Manual Input Fallback */}
-                <div className="mb-4">
-                    <h2 className="text-lg font-semibold mb-2">Or Enter Braille Manually</h2>
+                <div className="mb-6">
+                    <h2 className="text-lg font-semibold mb-2">Manual Braille Input</h2>
                     <textarea
-                        placeholder="Paste Braille characters here..."
+                        placeholder="Enter Braille characters here..."
                         className="w-full p-2 border rounded"
-                        rows="4"
-                        onChange={(e) => setConvertedText(convertBrailleToEnglish(e.target.value))}
+                        rows="3"
+                        value={brailleText}
+                        onChange={handleManualInput}
                     />
-                </div>
-
-                {/* Converted Text */}
-                <div>
-                    <h2 className="text-lg font-semibold mb-2">Converted Text</h2>
-                    <div className="p-4 bg-gray-50 rounded border">
-                        {convertedText || 'Converted text will appear here...'}
-                    </div>
+                    <p className="mt-1 text-sm text-gray-600">
+                        Tip: Use the Braille reference below to enter characters
+                    </p>
                 </div>
 
                 {/* Braille Reference */}
-                <div className="mt-6">
+                <div>
                     <h3 className="font-semibold mb-2">Braille Reference</h3>
-                    <div className="grid grid-cols-6 gap-2 text-sm">
+                    <div className="grid grid-cols-5 gap-2 text-sm">
                         {Object.entries(BRAILLE_TO_ENGLISH).slice(0, 26).map(([braille, eng]) => (
                             <div key={eng} className="bg-gray-100 p-2 rounded text-center">
-                                {braille}: {eng}
+                                <span className="text-lg">{braille}</span>: {eng.toUpperCase()}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-5 gap-2 text-sm mt-2">
+                        {Object.entries(BRAILLE_TO_ENGLISH).slice(26).map(([braille, eng]) => (
+                            <div key={eng} className="bg-gray-100 p-2 rounded text-center">
+                                <span className="text-lg">{braille}</span>: {eng}
                             </div>
                         ))}
                     </div>
